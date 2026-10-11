@@ -1,6 +1,7 @@
-// Accuracy test. For every person with a second free photo, search the index
-// (built from their first photo, int8 as on the phone) with the second photo
-// and record whether they come out first (top-1) and in the top 10.
+// Accuracy test. For a fixed sample of people (about 1 in 25) whose main photo
+// shows only them and who have a second free photo, search the index (built
+// from the main photos, int8 as on the phone) with the second photo and record
+// whether they come out first (top-1) and in the top 10.
 // Also: int8 vs full-precision agreement, and how close curated look-alike
 // pairs are in face space.
 // Usage: node build/eval.js   -> prints a report, writes build/out/eval.json
@@ -39,7 +40,7 @@ const pct = (x) => `${(100 * x).toFixed(1)}%`;
 // fair test; skip those.
 const base = (f) => f.toLowerCase().replace(/\.(jpe?g|png|webp)$/, '').replace(/\s*\((cropped|crop)[^)]*\)\s*/g, '').replace(/[\s_-]*(cropped|crop)\d*$/, '').trim();
 
-const groupOf = (p) => (p.cats & CAT.nebraska ? 'Nebraska' : p.cats & CAT.pro ? 'Pro sports' : p.cats & CAT.music ? 'Music' : p.cats & CAT.screen ? 'Movies & TV' : 'Other');
+const groupOf = (p) => (p.cats & CAT.nebraska ? 'Nebraska' : p.cats & CAT.college ? 'College' : p.cats & CAT.pro ? 'Pro sports' : p.cats & CAT.music ? 'Music' : p.cats & CAT.screen ? 'Movies & TV' : 'Other');
 const tally = new Map();
 const add = (g, top1, top10) => {
   const t = tally.get(g) || { n: 0, top1: 0, top10: 0 };
@@ -49,15 +50,15 @@ const add = (g, top1, top10) => {
 const misses = [];
 for (let r = 0; r < n; r++) {
   const f = faces[ids[r]];
-  if (!f.vec2 || base(f.file) === base(f.file2)) continue;
-  const sims = similarities(Float32Array.from(f.vec2), int8, inv);
+  if (!f.evalVec || base(f.file) === base(f.evalFile)) continue;
+  const sims = similarities(Float32Array.from(f.evalVec), int8, inv);
   const target = sims[r];
   let rank = 1;
   for (let j = 0; j < n; j++) if (j !== r && sims[j] > target) rank++;
   const p = byId.get(ids[r]);
   add('All', rank === 1, rank <= 10);
   add(groupOf(p), rank === 1, rank <= 10);
-  if (rank > 10) misses.push({ name: p.name, rank, sameCos: Number(f.agree), file: f.file, file2: f.file2 });
+  if (rank > 10) misses.push({ name: p.name, rank, sameCos: Number(cosine(f.vec, f.evalVec).toFixed(3)), file: f.file, file2: f.evalFile });
 }
 
 // int8 vs float: do the top-10 lists agree?

@@ -67,7 +67,7 @@ function mainTeam(teams, leagues) {
   return [...pool].sort((a, b) => years(b) - years(a))[0];
 }
 
-export function knownFor({ desc, extract, details, tags, leagues, nebraskaLabels }) {
+export function knownFor({ desc, extract, details, tags, leagues, labels }) {
   const line = predicate(firstSentence(extract)) || cleanDescription(desc);
   const kind = primaryKind(desc || line, tags);
   const lower = line.toLowerCase();
@@ -75,7 +75,9 @@ export function knownFor({ desc, extract, details, tags, leagues, nebraskaLabels
   const add = (s) => {
     if (s && !chips.includes(s) && !lower.includes(s.toLowerCase())) chips.push(s);
   };
-  for (const n of nebraskaLabels || []) add(n);
+  // College program labels ("Ohio State football"), Nebraska first.
+  const sorted = [...(labels || [])].sort((a, b) => /nebraska/i.test(b) - /nebraska/i.test(a));
+  for (const n of sorted.slice(0, 2)) add(n);
   if (kind === 'music') {
     for (const b of details.bands.slice(0, 1)) add(b.label);
   }
@@ -85,7 +87,9 @@ export function knownFor({ desc, extract, details, tags, leagues, nebraskaLabels
   // Team memberships on Wikidata are playing careers, so skip them for coaches.
   if (kind === 'sport' && !/\bcoach\b/i.test(line)) {
     const t = mainTeam(details.teams, leagues);
-    if (t && !(nebraskaLabels?.length && /nebraska/i.test(t.label))) add(t.label);
+    // Skip the team if a college label already names it.
+    const schools = (labels || []).map((l) => l.split(' ')[0].toLowerCase());
+    if (t && !schools.some((w) => t.label.toLowerCase().includes(w))) add(t.label);
   }
   return { line, chips: chips.slice(0, 3), kind };
 }

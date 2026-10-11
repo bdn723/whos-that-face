@@ -24,21 +24,29 @@ This file holds **durable** instructions. Session-by-session state goes in `docs
 ## How it works
 - `shared/face.js`: YuNet face detector + SFace fingerprints (onnxruntime-web, WASM, single-threaded). The same file runs in the browser and in the Node build, so fingerprints match.
 - `shared/names.js`: name normalisation, Double Metaphone sound-alikes, and edit distance.
-- Build steps (run in order):
+- Build steps, run in order. `collect.js` and `embed.js` cache their lookups in `build/cache/`.
 
   | Step | What it does | Writes |
   |---|---|---|
-  | `node build/collect.js <step0\|full>` | picks people | `build/out/people.json` |
-  | `node build/embed.js` | fingerprints faces (cached per photo in `build/cache/`) | `build/out/faces.json` |
-  | `node build/eval.js` | accuracy test | `build/out/eval.json` |
+  | `node build/collect.js full` | picks people. Fame comes from Wikimedia's daily pageview **dumps** (3 sampled days), not the live API | `build/out/people.json` |
+  | `node build/embed.js --budget-min=N` | fingerprints faces from Commons photos, most-viewed people first; stops at the time budget | `build/out/faces.json`, `embed-status.json` |
+  | `node build/eval.js` | accuracy test on a fixed ~1-in-25 sample with a second photo | `build/out/eval.json` |
   | `node build/pack.js` | assembles the site | `dist/` |
 
 - `node build/verify-pairs.js` checks the sources of the "often mistaken for" pairs in `data/mistaken-for.json`. Run it locally after adding pairs.
 - **Publishing:** the GitHub Action "Build and publish" (`.github/workflows/build.yml`) runs all four steps and deploys `dist/` to Pages. The index is never committed to git.
+  - It runs **monthly** (3rd of the month) and on demand.
+  - Caches live in the release **`build-cache`** (`build-cache.tar.gz`). Downloaded photos are never kept.
+  - Each run stops before GitHub's 6-hour limit. If photos remain, it publishes what it has and starts the next run itself, at most 8 in a row (`chain` input).
 - **Local preview:** the `whos-that-dist` entry in `.claude/launch.json` serves `dist/` on port 8765.
 
 ## Gotchas
-- **QLever** (`qlever.dev`), the fast Wikidata mirror used for the big people lists, intermittently returns zero rows for queries with a FILTER on `wikibase:sitelinks`. Filter in JS instead; an empty pool counts as a failure. Small per-person batches go to the official query service.
-- **Wikimedia etiquette:** a User-Agent naming the repo (`build/lib/http.js`), API calls one at a time, at most 2 photo downloads at once, and standard thumbnail widths only (250/330/500/960).
+- **QLever** (`qlever.dev`), the fast Wikidata mirror used for the big people lists, intermittently returns zero rows for queries with a FILTER on `wikibase:sitelinks`. Filter in JS instead; an empty pool counts as a failure. Per-person batches (500 at a time) also use QLever; if the core query returns under half the batch, the build retries on the official service.
+- **Wikimedia etiquette** (https://wikitech.wikimedia.org/wiki/Robot_policy):
+  - a User-Agent naming the repo (`build/lib/http.js`);
+  - Action API one request at a time, under 5 per second, and a 5 s pause after any request slower than 1 s;
+  - at most 2 photo downloads at once, at standard thumbnail widths only (250/330/500/960);
+  - obey 429 Retry-After. Commons rate-limits bots with 429s ("Your bot is making too many requests"), and the photo pacer in `http.js` adapts to them;
+  - use dumps for bulk data (pageviews).
 - **Lookalikes:** face fingerprints measure identity, not "looks like." Famous lookalike pairs (e.g. Will Ferrell / Chad Smith) can score low, which is why the hand-checked pairs exist. Every face pair needs a source naming both people.
 - `gh` is authenticated as **bdn723**.

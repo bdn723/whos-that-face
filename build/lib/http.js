@@ -40,8 +40,51 @@ export function limiter(concurrency, minGapMs) {
 
 // API calls: one at a time, under 5 per second.
 export const apiLimit = limiter(1, 220);
-// Media downloads: 2 at a time.
-export const mediaLimit = limiter(2, 50);
+
+// Media downloads: at most 2 at a time, paced. Commons also rate-limits bots
+// with HTTP 429 + Retry-After without publishing a number, so the gap between
+// downloads adapts: it doubles after a 429 and shrinks slowly while requests
+// succeed.
+export const mediaPace = { gapMs: 400, minGapMs: 200, maxGapMs: 8000, ok: 0, throttled: 0, pausedUntil: 0 };
+export function mediaThrottled(retryAfterSec) {
+  mediaPace.throttled++;
+  mediaPace.ok = 0;
+  mediaPace.gapMs = Math.min(mediaPace.maxGapMs, mediaPace.gapMs * 2);
+  mediaPace.pausedUntil = Math.max(mediaPace.pausedUntil, Date.now() + (retryAfterSec || 10) * 1000);
+}
+export function mediaSucceeded() {
+  if (++mediaPace.ok >= 40) {
+    mediaPace.ok = 0;
+    mediaPace.gapMs = Math.max(mediaPace.minGapMs, Math.round(mediaPace.gapMs * 0.85));
+  }
+}
+let mediaActive = 0;
+let mediaLast = 0;
+const mediaQueue = [];
+async function mediaPump() {
+  if (mediaActive >= 2 || !mediaQueue.length) return;
+  mediaActive++;
+  const { fn, resolve, reject } = mediaQueue.shift();
+  try {
+    for (;;) {
+      const wait = Math.max(mediaPace.pausedUntil, mediaLast + mediaPace.gapMs) - Date.now();
+      if (wait <= 0) break;
+      await sleep(wait);
+    }
+    mediaLast = Date.now();
+    resolve(await fn());
+  } catch (e) {
+    reject(e);
+  } finally {
+    mediaActive--;
+    mediaPump();
+  }
+}
+export const mediaLimit = (fn) =>
+  new Promise((resolve, reject) => {
+    mediaQueue.push({ fn, resolve, reject });
+    mediaPump();
+  });
 
 export async function fetchWithRetry(url, opts = {}, { tries = 5, what = url } = {}) {
   let delay = 2000;
@@ -70,15 +113,28 @@ export async function fetchWithRetry(url, opts = {}, { tries = 5, what = url } =
   }
 }
 
+// Action API rule: if a request took over 1 s to serve, wait 5 s before the
+// next one.
+let apiNotBefore = 0;
 export async function getJson(url, params) {
   const u = new URL(url);
   for (const [k, v] of Object.entries(params || {})) u.searchParams.set(k, v);
-  return apiLimit(async () => (await fetchWithRetry(u.toString())).json());
+  return apiLimit(async () => {
+    const wait = apiNotBefore - Date.now();
+    if (wait > 0) await sleep(wait);
+    const t0 = Date.now();
+    const res = await fetchWithRetry(u.toString());
+    const json = await res.json();
+    if (Date.now() - t0 > 1000) apiNotBefore = Date.now() + 5000;
+    return json;
+  });
 }
 
+// SPARQL endpoints have their own queue so they don't hold up API calls.
+const sparqlLimit = limiter(1, 100);
 export async function postFormJson(url, params) {
   const body = new URLSearchParams(params);
-  return apiLimit(async () =>
+  return sparqlLimit(async () =>
     (
       await fetchWithRetry(url, {
         method: 'POST',

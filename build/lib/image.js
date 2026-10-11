@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import * as ort from 'onnxruntime-web';
 import { createFaceEngine } from '../../shared/face.js';
-import { fetchWithRetry, mediaLimit } from './http.js';
+import { USER_AGENT, mediaLimit, mediaThrottled, mediaSucceeded } from './http.js';
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
 export const CACHE_DIR = path.join(ROOT, 'build/cache');
@@ -41,8 +41,40 @@ export function commonsPaths(fileName) {
 
 const OK_EXT = /\.(jpe?g|png|webp)$/i;
 
-// Download a Commons file at 500px wide (or the original if it is smaller),
-// with an on-disk cache. Returns a Buffer or null.
+// One media GET through the shared pacer. Returns { status, buf? } and
+// never throws for HTTP errors; a 429 slows the pacer and is retried.
+async function getMedia(url, what) {
+  for (let attempt = 1; attempt <= 6; attempt++) {
+    const r = await mediaLimit(async () => {
+      try {
+        const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
+        if (res.status === 429) {
+          mediaThrottled(Number(res.headers.get('retry-after')));
+          await res.arrayBuffer().catch(() => {});
+          return { retry: true };
+        }
+        if (!res.ok) {
+          await res.arrayBuffer().catch(() => {});
+          return { status: res.status, retry: res.status >= 500 };
+        }
+        const buf = Buffer.from(await res.arrayBuffer());
+        mediaSucceeded();
+        return { status: 200, buf };
+      } catch (e) {
+        return { status: 0, retry: true, error: e.message };
+      }
+    });
+    if (!r.retry) return r;
+    if (r.status >= 500 || r.status === 0) await new Promise((res) => setTimeout(res, 2000 * attempt));
+  }
+  console.warn(`  giving up on ${what} for now`);
+  return { status: -1 }; // transient: try again next run
+}
+
+// Download a Commons file at 500px wide (or the original if it is smaller).
+// Returns a Buffer, null (file unusable), or undefined (temporary failure).
+// Set KEEP_IMAGES=1 to keep downloads on disk (handy for local development).
+const KEEP = process.env.KEEP_IMAGES === '1';
 export async function fetchCommonsImage(fileName) {
   if (!OK_EXT.test(fileName)) return null;
   const p = commonsPaths(fileName);
@@ -52,27 +84,16 @@ export async function fetchCommonsImage(fileName) {
     const b = fs.readFileSync(file);
     return b.length ? b : null;
   }
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  const buf = await mediaLimit(async () => {
-    // A 500px thumbnail doesn't exist when the original is narrower; then
-    // Commons answers 4xx and the original is used.
-    let lastErr;
-    for (const url of [p.thumb(500), p.original]) {
-      try {
-        const res = await fetchWithRetry(url, {}, { tries: 4, what: p.name });
-        if (res.ok) return Buffer.from(await res.arrayBuffer());
-      } catch (e) {
-        lastErr = e;
-      }
-    }
-    if (lastErr && /HTTP (429|5\d\d)|fetch failed|ECONN|ETIMEDOUT/.test(lastErr.message)) throw lastErr;
-    return null;
-  }).catch((e) => {
-    console.warn(`  image failed: ${e.message}`);
-    return undefined;
-  });
-  if (buf === undefined) return null; // transient failure: don't cache
-  fs.writeFileSync(file, buf || Buffer.alloc(0));
+  // A 500px thumbnail doesn't exist when the original is narrower; then
+  // Commons answers 4xx and the (small) original is used.
+  let r = await getMedia(p.thumb(500), p.name);
+  if (r.status !== 200 && r.status !== -1) r = await getMedia(p.original, p.name);
+  if (r.status === -1) return undefined;
+  const buf = r.status === 200 ? r.buf : null;
+  if (KEEP) {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, buf || Buffer.alloc(0));
+  }
   return buf;
 }
 

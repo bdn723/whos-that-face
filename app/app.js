@@ -131,10 +131,13 @@ function wireFilters(rerender) {
 
 // ---------- data loading ----------
 
+const timings = {};
 async function loadPeople() {
+  const t0 = performance.now();
   const m = await (await fetch('data/manifest.json', { cache: 'no-cache' })).json();
   S.manifest = m;
   const d = await (await fetch(m.people)).json();
+  timings.peopleLoad = performance.now() - t0;
   S.people = d.people;
   S.knownFame = d.knownFame;
   for (const [a, b, kind, note, source] of d.pairs) {
@@ -143,7 +146,9 @@ async function loadPeople() {
       S.pairsBy.get(x).push({ other: y, kind, note, source });
     }
   }
+  const t1 = performance.now();
   S.names = buildNameIndex(S.people);
+  timings.nameIndex = performance.now() - t1;
   S.byId = new Map(S.people.map((p, i) => [p.i, i]));
   S.rowPerson = new Int32Array(m.faces);
   S.people.forEach((p, i) => { if (p.v !== undefined) S.rowPerson[p.v] = i; });
@@ -288,7 +293,17 @@ function renderNameResults() {
   // Exact-name matches always show (she typed that name); filters apply to the rest.
   const sameList = same.filter((r) => passesCat(S.people[r.pi]));
   const sameSet = new Set(sameList.map((r) => r.pi));
-  const simList = similar.filter((r) => !sameSet.has(r.pi) && keep(r)).slice(0, 15);
+  // Hand-checked name mix-ups of the people found come first.
+  const curated = [];
+  for (const r of [...sameList, ...similar.slice(0, 1)]) {
+    for (const x of S.pairsBy.get(r.pi) || []) {
+      if (x.kind === 'name' && !sameSet.has(x.other) && !curated.some((c) => c.pi === x.other)) curated.push({ pi: x.other });
+    }
+  }
+  const curatedSet = new Set(curated.map((c) => c.pi));
+  const rest = similar.filter((r) => !sameSet.has(r.pi) && !curatedSet.has(r.pi) && keep(r));
+  // With no exact match, the closest name stays on top, then the curated pairs.
+  const simList = (sameList.length ? [...curated, ...rest] : [...rest.slice(0, 1), ...curated, ...rest.slice(1)]).slice(0, 15);
   box.innerHTML = `${filterBar()}
     ${sameList.length ? `<h3 class="section">${sameList.length > 1 ? `${sameList.length} people named “${esc(q)}”` : 'Same name'}</h3>
       <div class="list">${sameList.map((r) => personRow(r.pi)).join('')}</div>` : ''}
@@ -447,6 +462,10 @@ async function renderCheck() {
     out.push(`<ul><li>Face matcher ready in ${(tLoad / 1000).toFixed(1)} s${S.engine && tLoad < 50 ? ' (already loaded)' : ''}</li>`);
     out.push(`<li>One photo checked in ${(tFace / 1000).toFixed(2)} s</li>`);
     out.push(`<li>${S.people.length.toLocaleString()} people, ${S.manifest.faces.toLocaleString()} faces</li>`);
+    out.push(`<li>People list loaded in ${(timings.peopleLoad / 1000).toFixed(1)} s; name search ready in ${(timings.nameIndex / 1000).toFixed(1)} s more</li>`);
+    const tq = performance.now();
+    for (const q of ['will farrel', 'josh allen', 'matt rule', 'taylor']) searchNames(S.names, q);
+    out.push(`<li>Name search: ${((performance.now() - tq) / 4).toFixed(0)} ms per search</li>`);
     out.push(`<li>Offline cache: ${navigator.serviceWorker?.controller ? 'on' : 'not yet (reopen the app once)'}</li>`);
     out.push(`<li class="muted">${esc(navigator.userAgent)}</li></ul>`);
     show(out.join(''));

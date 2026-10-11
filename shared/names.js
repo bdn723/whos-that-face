@@ -6,14 +6,11 @@ import { doubleMetaphone } from 'double-metaphone';
 
 const SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv']);
 
+const NON_ASCII = /[^\x00-\x7f]/;
 export function normalize(s) {
-  return s
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/['’`]/g, '')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
+  // Accent-stripping is slow, so only do it when there's something to strip.
+  const x = NON_ASCII.test(s) ? s.normalize('NFD').replace(/[\u0300-\u036f]/g, '') : s;
+  return x.toLowerCase().replace(/['’`]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
 // Words that carry the name, without Jr./III etc.
@@ -91,7 +88,7 @@ export function nameSimilarity(qTokens, cTokens) {
     let bestJ = pos;
     for (let j = 0; j < cTokens.length; j++) {
       if (used.has(j)) continue;
-      const s = tokenSimilarity(qTokens[i], cTokens[j]) - (j === pos ? 0 : 0.1);
+      const s = tokenSimilarity(qTokens[i], cTokens[j]) - (j === pos || n === 1 ? 0 : 0.2);
       if (s > best) { best = s; bestJ = j; }
     }
     used.add(bestJ);
@@ -104,53 +101,90 @@ export function nameSimilarity(qTokens, cTokens) {
 
 // Build the in-memory search structures from the people list.
 // Each person: { n: display name, a: [aliases], f: fame 0..1 }.
+// Entries are one per (person, name variant), stored in parallel arrays.
 export function buildNameIndex(people) {
-  const entries = []; // one per (person, name variant)
+  const ePerson = [];
+  const eNorm = [];
+  const eToks = [];
   const byPhone = new Map(); // phonetic code -> entry ids
-  people.forEach((p, pi) => {
-    const variants = new Set([p.n, ...(p.a || [])].map((v) => tokens(v).join(' ')).filter(Boolean));
+  const byFirst = new Map(); // first letter -> flat [token, entry id, ...]
+  for (let pi = 0; pi < people.length; pi++) {
+    const p = people[pi];
+    const seen = [];
+    const variants = p.a ? [p.n, ...p.a] : [p.n];
     for (const v of variants) {
-      const toks = v.split(' ');
-      const id = entries.length;
-      entries.push({ pi, norm: v, toks });
+      const toks = normalize(v).split(' ').filter((t) => t && !SUFFIXES.has(t));
+      if (!toks.length) continue;
+      const norm = toks.join(' ');
+      if (seen.includes(norm)) continue;
+      seen.push(norm);
+      const id = ePerson.length;
+      ePerson.push(pi);
+      eNorm.push(norm);
+      eToks.push(toks);
       for (const t of toks) {
         for (const code of phonetic(t)) {
           if (!code) continue;
-          let arr = byPhone.get(code);
-          if (!arr) byPhone.set(code, (arr = []));
-          arr.push(id);
+          const arr = byPhone.get(code);
+          if (arr) arr.push(id);
+          else byPhone.set(code, [id]);
         }
+        const f = byFirst.get(t[0]);
+        if (f) f.push(t, id);
+        else byFirst.set(t[0], [t, id]);
       }
     }
-  });
-  return { people, entries, byPhone };
+  }
+  // Entry ids sorted by normalized name, for prefix lookups while typing.
+  const sorted = Int32Array.from(eNorm.keys()).sort((a, b) => (eNorm[a] < eNorm[b] ? -1 : eNorm[a] > eNorm[b] ? 1 : 0));
+  return { people, ePerson, eNorm, eToks, byPhone, byFirst, sorted };
 }
 
-// Search. Returns { same: [...], similar: [...] } of { person index, score }.
-export function searchNames(index, query, { limit = 15, minScore = 0.65, fameWeight = 0.08 } = {}) {
+// Entry ids whose normalized name starts with `prefix` (binary search).
+function prefixIds(index, prefix, max = 200) {
+  const { sorted, eNorm } = index;
+  let lo = 0;
+  let hi = sorted.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (eNorm[sorted[mid]] < prefix) lo = mid + 1;
+    else hi = mid;
+  }
+  const out = [];
+  for (let i = lo; i < sorted.length && out.length < max && eNorm[sorted[i]].startsWith(prefix); i++) out.push(sorted[i]);
+  return out;
+}
+
+// Search. Returns { same: [...], similar: [...] } of { pi: person index, score }.
+export function searchNames(index, query, { limit = 15, minScore = 0.65, fameWeight = 0.15 } = {}) {
   const qTokens = tokens(query);
   if (!qTokens.length) return { same: [], similar: [] };
   const qNorm = qTokens.join(' ');
   const cand = new Set();
   // Sound-alike words (the surname matters most, so use every word).
   for (const t of qTokens) for (const code of phonetic(t)) for (const id of index.byPhone.get(code) || []) cand.add(id);
-  // Prefix typing ("patrick mah") and small spelling slips in the surname.
+  // Typing in progress ("patrick mah").
+  for (const id of prefixIds(index, qNorm)) cand.add(id);
+  // Small spelling slips in the surname: same first letter, similar length.
   const last = qTokens[qTokens.length - 1];
-  index.entries.forEach((e, id) => {
-    if (cand.has(id)) return;
-    if (e.norm.startsWith(qNorm)) cand.add(id);
-    else if (last.length >= 4 && e.toks.some((t) => Math.abs(t.length - last.length) <= 2 && t[0] === last[0] && editDistance(t, last) <= 2)) cand.add(id);
-  });
+  if (last.length >= 4) {
+    const list = index.byFirst.get(last[0]) || [];
+    for (let i = 0; i < list.length; i += 2) {
+      const t = list[i];
+      if (t !== last && Math.abs(t.length - last.length) <= 2 && editDistance(t, last) <= 2) cand.add(list[i + 1]);
+    }
+  }
 
-  const best = new Map(); // person -> { score, exact }
+  const best = new Map(); // person -> { s, exact }
   for (const id of cand) {
-    const e = index.entries[id];
-    const exact = e.norm === qNorm;
-    const prefix = !exact && e.norm.startsWith(qNorm) && qNorm.length >= 3;
-    let s = exact ? 1 : nameSimilarity(qTokens, e.toks);
+    const norm = index.eNorm[id];
+    const exact = norm === qNorm;
+    const prefix = !exact && qNorm.length >= 3 && norm.startsWith(qNorm);
+    let s = exact ? 1 : nameSimilarity(qTokens, index.eToks[id]);
     if (prefix) s = Math.max(s, 0.8);
-    const prev = best.get(e.pi);
-    if (!prev || s > prev.s || (exact && !prev.exact)) best.set(e.pi, { s, exact: exact || prev?.exact || false });
+    const pi = index.ePerson[id];
+    const prev = best.get(pi);
+    if (!prev || s > prev.s || (exact && !prev.exact)) best.set(pi, { s, exact: exact || prev?.exact || false });
   }
   const fame = (pi) => index.people[pi].f || 0;
   const same = [];

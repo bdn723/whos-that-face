@@ -1,18 +1,32 @@
-# Builds the people/face index from Wikidata, Wikipedia and Wikimedia Commons,
-# runs the accuracy test, and publishes the site to GitHub Pages.
-# Run it from the Actions tab ("Run workflow").
+# Builds the people/face index from Wikidata, Wikipedia, Wikimedia's pageview
+# dumps and Wikimedia Commons photos, runs the accuracy test, and publishes the
+# site to GitHub Pages.
+#
+# - Monthly (3rd of the month) and from the Actions tab ("Run workflow").
+# - Lookups and face fingerprints are cached between runs in the release
+#   "build-cache", so a run only processes what's new.
+# - Commons rate-limits photo downloads, so the first full build needs several
+#   runs: each run stops in time, publishes what it has, and starts the next
+#   one (at most 8 in a row).
 name: Build and publish
 
 on:
   workflow_dispatch:
     inputs:
       profile:
-        description: "Who to include: step0 (feasibility test, ~1,200 people) or full"
-        default: step0
+        description: "Who to include: full, or step0 (small test)"
+        default: full
         required: true
+      chain:
+        description: "Internal: how many runs in a row so far"
+        default: "0"
+        required: false
+  schedule:
+    - cron: "23 7 3 * *"
 
 permissions:
-  contents: read
+  contents: write   # the build cache is a release asset
+  actions: write    # a run that runs out of time starts the next one
   pages: write
   id-token: write
 
@@ -20,31 +34,66 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  PROFILE: ${{ inputs.profile || 'full' }}
+  CHAIN: ${{ inputs.chain || '0' }}
+  GH_TOKEN: ${{ github.token }}
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 350
+    outputs:
+      pending: ${{ steps.status.outputs.pending }}
     steps:
+      - name: Note the start time
+        run: echo "DEADLINE=$(( $(date +%s) + 300 * 60 ))" >> "$GITHUB_ENV"
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
-      - name: Collect people (Wikidata + Wikipedia)
-        run: node build/collect.js ${{ inputs.profile }}
+      - name: Install tools
+        run: |
+          sudo apt-get install -y -q lbzip2 >/dev/null
+          npm ci
+      - name: Restore build cache
+        run: |
+          mkdir -p build/cache
+          if gh release download build-cache -p build-cache.tar.gz -D /tmp; then
+            tar -xzf /tmp/build-cache.tar.gz -C build/cache && echo "cache restored: $(du -sh build/cache | cut -f1)"
+          else
+            echo "no cache yet"
+          fi
+      - name: Collect people (Wikidata, Wikipedia, pageview dumps)
+        run: node build/collect.js "$PROFILE"
       - name: Face fingerprints (Wikimedia Commons photos)
-        run: node build/embed.js
+        run: node build/embed.js --deadline=$(( DEADLINE * 1000 ))
+      - name: Save build cache
+        if: always()
+        run: |
+          find build/cache -maxdepth 1 -name 'pv-*.json' -mtime +20 -delete || true
+          tar -czf /tmp/build-cache.tar.gz -C build/cache --exclude=./img .
+          gh release view build-cache >/dev/null 2>&1 || gh release create build-cache --title "Build cache" --notes "Lookup and face-fingerprint cache used by the monthly build. Not a software release."
+          gh release upload build-cache /tmp/build-cache.tar.gz --clobber
+          echo "cache saved: $(du -h /tmp/build-cache.tar.gz | cut -f1)"
       - name: Accuracy test
         run: node build/eval.js | tee build/out/eval.txt
       - name: Pack the site
         run: node build/pack.js
+      - id: status
+        name: Anything left to do?
+        run: |
+          cat build/out/embed-status.json
+          echo "pending=$(node -p "require('./build/out/embed-status.json').pending")" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         with:
           name: build-report
           path: |
             build/out/eval.json
             build/out/eval.txt
+            build/out/embed-status.json
+            build/out/collect.json
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
@@ -58,3 +107,11 @@ jobs:
     steps:
       - id: deploy
         uses: actions/deploy-pages@v4
+
+  continue:
+    needs: [build, deploy]
+    if: needs.build.outputs.pending != '0' && fromJSON(inputs.chain || '0') < 8
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start the next run to finish the remaining photos
+        run: gh workflow run build.yml -R "$GITHUB_REPOSITORY" -f profile="$PROFILE" -f chain=$(( CHAIN + 1 ))

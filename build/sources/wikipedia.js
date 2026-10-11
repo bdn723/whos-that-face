@@ -28,7 +28,8 @@ const resolve = (redirects, t) => {
   return x;
 };
 
-// Title -> { title, qid, desc, views60, pageimage, disambig }.
+// Title -> { title, qid, desc, pageimage, disambig }. (Pageviews come from
+// the dumps, see pageviews.js.)
 // Input titles may be redirects; the returned map is keyed by the input title.
 export async function pageInfo(titles) {
   const out = new Map();
@@ -36,9 +37,8 @@ export async function pageInfo(titles) {
     const { pages, redirects } = await queryAll({
       titles: batch.join('|'),
       redirects: 1,
-      prop: 'pageprops|description|pageviews|pageimages',
+      prop: 'pageprops|description|pageimages',
       ppprop: 'wikibase_item|disambiguation',
-      pvipdays: 60,
       piprop: 'name',
       pilicense: 'free',
     });
@@ -49,7 +49,6 @@ export async function pageInfo(titles) {
         title: p.title,
         qid: p.pageprops?.wikibase_item || null,
         desc: p.description || '',
-        views60: Object.values(p.pageviews || {}).reduce((s, v) => s + (v || 0), 0),
         pageimage: p.pageimage ? p.pageimage.replace(/_/g, ' ') : null,
         disambig: p.pageprops?.disambiguation !== undefined,
       });

@@ -7,6 +7,18 @@ import crypto from 'node:crypto';
 import { quantize, DIM } from '../shared/face.js';
 import { commonsPaths } from './lib/image.js';
 import { KNOWN_FAME } from './config.js';
+import { tokens } from '../shared/names.js';
+
+// Nicknames help name search ("Shaq", "The Rock"); legal full names that just
+// add middle names ("Chad Gaylord Smith") don't, and they slow the phone down.
+function usefulAliases(name, aliases) {
+  const nt = new Set(tokens(name));
+  return aliases.filter((a) => {
+    const at = tokens(a);
+    if (!at.length || at.length > 4) return false;
+    return !([...nt].every((t) => at.includes(t)) && at.length > nt.size);
+  }).slice(0, 3);
+}
 
 const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 const OUT = path.join(ROOT, 'build/out');
@@ -30,7 +42,8 @@ const compact = people.map((p) => {
   const f = faces[p.id];
   const o = { i: p.id, n: p.name };
   if (p.title !== p.name) o.t = p.title;
-  if (p.aliases.length) o.a = p.aliases;
+  const a = usefulAliases(p.name, p.aliases);
+  if (a.length) o.a = a;
   o.d = p.line || p.desc || '';
   if (p.chips.length) o.k = p.chips;
   o.c = p.cats;
