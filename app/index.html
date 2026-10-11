@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Who's That?</title>
+  <meta name="description" content="Why do I know that face? Why do I recognize that name? Find who you're thinking of — and who you might be mixing them up with.">
+  <meta name="theme-color" content="#c8102e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Who's That?">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icon-180.png">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+    { "imports": {
+        "onnxruntime-web": "./vendor/ort.wasm.min.mjs",
+        "double-metaphone": "./vendor/double-metaphone.js"
+    } }
+  </script>
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a href="#/" class="brand" aria-label="Home"><span class="logo" aria-hidden="true">?</span>Who's That?</a>
+    <a href="#/about" class="about-link">About</a>
+  </header>
+  <main id="view" tabindex="-1">
+    <p class="loading">Loading…</p>
+  </main>
+  <input id="photo-input" type="file" accept="image/*" hidden>
+</body>
+</html>

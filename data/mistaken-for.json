@@ -1,0 +1,113 @@
+{
+  "_about": "Hand-checked pairs shown as 'Often mistaken for'. kind=face: people who look alike; kind=name: people with confusable names. Face pairs need a source that names both people; build/verify-pairs.js checks this and records the date. Name pairs whose names are the same or sound the same need no source. Names are English Wikipedia titles.",
+  "pairs": [
+    {
+      "a": "Will Ferrell",
+      "b": "Chad Smith",
+      "kind": "face",
+      "note": "Long-running joke feud over their resemblance; drum-off on The Tonight Show, 2014.",
+      "source": "https://en.wikipedia.org/wiki/Will_Ferrell",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Isla Fisher",
+      "b": "Amy Adams",
+      "kind": "face",
+      "note": "Lady Gaga once complimented Fisher on Adams's performance; Tom Ford cast them as look-alikes in Nocturnal Animals.",
+      "source": "https://www.etonline.com/node/67884",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Jessica Chastain",
+      "b": "Bryce Dallas Howard",
+      "kind": "face",
+      "note": "Even Bryce's father, Ron Howard, mistook Chastain for his daughter.",
+      "source": "https://www.etonline.com/node/129119",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Katy Perry",
+      "b": "Zooey Deschanel",
+      "kind": "face",
+      "note": "Perry's 2020 video 'Not the End of the World' is built around aliens mistaking Deschanel for her.",
+      "source": "https://www.etonline.com/zooey-deschanel-is-mistaken-for-katy-perry-in-new-not-the-end-of-the-world-music-video-158148",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Tom Hardy",
+      "b": "Logan Marshall-Green",
+      "kind": "face",
+      "note": "Viewers often thought Hardy was in Spider-Man: Homecoming; it was Marshall-Green.",
+      "source": "https://inverse.com/article/33834-tom-hardy-spider-man-homecoming-logan-marshall-gre",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Elijah Wood",
+      "b": "Daniel Radcliffe",
+      "kind": "face",
+      "note": "Both say fans mix them up; Radcliffe once signed 'I am not Elijah Wood'.",
+      "source": "https://capeargus.co.za/entertainment/celebrity-news/international/2021-02-21-daniel-radcliffe-and-elijah-wood-open-up-about-being-mistaken-for-one-another",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Ryan Reynolds",
+      "b": "Ryan Gosling",
+      "kind": "face",
+      "note": "Reynolds says he's regularly taken for Gosling (and for Ben Affleck).",
+      "source": "https://wegotthiscovered.com/movies/ryan-reynolds-gets-mistaken-for-ben-affleck-and-ryan-gosling-all-the-time/",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Ryan Reynolds",
+      "b": "Ben Affleck",
+      "kind": "face",
+      "note": "Reynolds says staff at his local New York pizzeria regularly think he's Affleck.",
+      "source": "https://edition.cnn.com/2021/12/21/entertainment/ryan-reynolds-ben-affleck",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Javier Bardem",
+      "b": "Jeffrey Dean Morgan",
+      "kind": "face",
+      "note": "One of the most-cited actor look-alike pairs; Morgan says he's often taken for Bardem.",
+      "source": "https://www.hollywoodreporter.com/lists/celebrity-lookalikes-doppelgangers/",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Josh Allen",
+      "b": "Josh Hines-Allen",
+      "kind": "name",
+      "note": "Bills quarterback vs. Jaguars pass rusher, who played as Josh Allen until changing his name in 2025.",
+      "source": "https://en.wikipedia.org/wiki/Josh_Hines-Allen",
+      "checked": "2026-10-11"
+    },
+    {
+      "a": "Michael Jordan",
+      "b": "Michael B. Jordan",
+      "kind": "name",
+      "note": "Basketball legend vs. the Creed and Black Panther actor.",
+      "source": null
+    },
+    {
+      "a": "Will Ferrell",
+      "b": "Colin Farrell",
+      "kind": "name",
+      "note": "Comedian vs. Irish actor; the surnames sound the same.",
+      "source": null
+    },
+    {
+      "a": "Chris Evans (actor)",
+      "b": "Chris Evans (presenter)",
+      "kind": "name",
+      "note": "Captain America vs. the British TV and radio host.",
+      "source": null
+    },
+    {
+      "a": "Adam Scott",
+      "b": "Adam Scott (golfer)",
+      "kind": "name",
+      "note": "Parks and Recreation / Severance actor vs. Australian golfer.",
+      "source": null
+    }
+  ]
+}

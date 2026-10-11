@@ -1,0 +1,60 @@
+# Builds the people/face index from Wikidata, Wikipedia and Wikimedia Commons,
+# runs the accuracy test, and publishes the site to GitHub Pages.
+# Run it from the Actions tab ("Run workflow").
+name: Build and publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Who to include: step0 (feasibility test, ~1,200 people) or full"
+        default: step0
+        required: true
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Collect people (Wikidata + Wikipedia)
+        run: node build/collect.js ${{ inputs.profile }}
+      - name: Face fingerprints (Wikimedia Commons photos)
+        run: node build/embed.js
+      - name: Accuracy test
+        run: node build/eval.js | tee build/out/eval.txt
+      - name: Pack the site
+        run: node build/pack.js
+      - uses: actions/upload-artifact@v4
+        with:
+          name: build-report
+          path: |
+            build/out/eval.json
+            build/out/eval.txt
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
