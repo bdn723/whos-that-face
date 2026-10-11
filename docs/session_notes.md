@@ -60,3 +60,66 @@ Append a new dated section at the end of each session. Never rewrite earlier sec
 - When a person's main photo is a group shot, the largest face may be someone else (e.g. Maria Bartiromo's photo is a Pompeo interview). Prefer single-face photos, and use the second and third photos to settle disagreements (31 people flagged).
 - Similar-faces lists include some odd picks (e.g. Zoe Saldaña for Will Ferrell). Consider tuning the fame bonus with the accuracy test.
 - Screen and music pools include many non-US actors with high English Wikipedia pageviews. Probably fine; revisit if Abby finds the lists unfamiliar.
+
+## 11 Oct 2026 (later): full version
+
+### Owner decision
+- Ben, after testing step 0 on Abby's iPhone: "it works on her phone, build the full version." Step 0 counted as a go.
+- The #/check screenshot wasn't sent, so iPhone fingerprint parity is still unmeasured. The desktop browser matches Node (cosine 1.0000).
+
+### What changed
+- **Coverage = the plan:**
+  - movies & TV, hosts, music;
+  - NFL, NBA, MLB, NHL, WNBA, Premier League, US national teams;
+  - Power-4 college: 67 schools × football/basketball players and coaches (402 Wikipedia categories; 5 schools use different basketball names, e.g. "Tennessee Lady Volunteers");
+  - Nebraska.
+- **Fame bars:** estimated views per 60 days of at least 900 (screen, music), at least 600 (sports, college), or tied to Nebraska. Lesser-known people (under 1,500 views / 60 days) appear only with the toggle.
+- **Following Wikimedia's robot policy** (wikitech Robot_policy):
+  - pageviews come from the daily dumps (3 sampled days, about 2½ minutes each locally), not the live API;
+  - the Action API pauses 5 s after any request slower than 1 s;
+  - photo downloads are paced (2 at a time, obeying 429 Retry-After).
+  - Commons replies "Your bot is making too many requests" if we go faster than about 1 photo per second.
+- **Group photos:** up to 3 faces are kept per photo; a second photo decides which face is the person.
+- **Accuracy test:** a fixed 1-in-25 sample whose main photo shows only them.
+- **Name search rebuilt for scale:**
+
+  | | Before | After |
+  |---|---|---|
+  | Index build (desktop) | 2.1 s | 0.22 s |
+  | Per search | 67 ms | 9.5 ms |
+
+  Legal-name aliases are dropped. Hand-checked name pairs follow the closest match.
+
+### Numbers (local collection, 11 Oct)
+
+| | Count |
+|---|---|
+| Candidates | 301,918 titles |
+| Kept people | 114,954 |
+| With a free photo | 75,235 |
+
+| Group | People | With photo |
+|---|---|---|
+| Movies & TV | 61,957 | 38,042 |
+| Music | 31,442 | 23,512 |
+| Pro sports | 23,919 | 17,722 |
+| College | 16,431 | 9,922 |
+| Nebraska | 816 | 325 |
+
+- Collection took about 70 min locally from scratch:
+
+  | Stage | Time |
+  |---|---|
+  | Pageview dumps | 7½ min |
+  | Page info | 11 min |
+  | Wikidata facts | 27 min |
+  | Lead sentences | 23 min |
+
+  It's cached in the `build-cache` release (29 MB) and reused for 30–120 days.
+- The people file is 20.4 MB (6.6 MB gzipped), bigger than the plan's 60–80k people. Kept because load and search times are fine. If Abby finds it slow, raise the screen/music bars first.
+- Fingerprinting runs at about 65 photos/min, so the first full pass is about 20 h. GitHub runs chain themselves (up to 8), publishing after each run, most-viewed people first.
+
+### Open
+- Watch the chained runs to completion; then check the accuracy report on the full index.
+- iPhone #/check screenshot (parity, load and search timings on the real phone).
+- Later ideas from the plan are unchanged: "save this face" on the phone, Nebraska roster names, self-hosted thumbnails.
