@@ -79,6 +79,10 @@ const peopleFile = `data/people.${hash(peopleBuf)}.json`;
 const vecFile = `data/vectors.${hash(vecBuf)}.bin`;
 put(peopleFile, peopleBuf);
 put(vecFile, vecBuf);
+// Self-check for phones: one known photo and the fingerprint the build got
+// for it. The app's #/check page compares the phone's result to this.
+const ref = faces[people.find((p) => p.title === 'Will Ferrell')?.id] || Object.values(faces)[0];
+if (ref) put('data/check.json', JSON.stringify({ file: commonsSeg(ref.file), vec: ref.vec }));
 const built = new Date().toISOString();
 put('data/manifest.json', JSON.stringify({ built, people: peopleFile, vectors: vecFile, count: compact.length, faces: rows.length, dim: DIM }, null, 1));
 

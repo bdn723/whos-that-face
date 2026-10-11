@@ -189,9 +189,15 @@ function faceRank(query, { exclude = -1, k = LOOKALIKES, filtered = true } = {})
 async function fileToImage(blob) {
   const url = URL.createObjectURL(blob);
   try {
+    // Wait for the load event rather than img.decode(), which some browsers
+    // hold back while the page is in the background. The browser applies the
+    // photo's rotation when drawing it.
     const img = new Image();
-    img.src = url;
-    await img.decode(); // the browser applies the photo's rotation
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('not a readable image'));
+      img.src = url;
+    });
     const w = img.naturalWidth;
     const h = img.naturalHeight;
     // Draw at most 2560px (iOS limits canvas size); face.js shrinks further.
@@ -416,6 +422,39 @@ function renderAbout() {
   </div>`;
 }
 
+// Self-check: how fast is face matching on this phone, and does it produce
+// the same fingerprint as the build for a known photo?
+async function renderCheck() {
+  $view.innerHTML = '<h1>Phone check</h1><p class="loading" id="chk">Running…</p>';
+  const out = [];
+  const show = (html) => { document.getElementById('chk').outerHTML = `<div id="chk">${html}</div>`; };
+  try {
+    const t0 = performance.now();
+    await loadFaces();
+    const tLoad = performance.now() - t0;
+    const ref = await (await fetch('data/check.json', { cache: 'no-cache' })).json();
+    const blob = await (await fetch(thumbUrl(ref.file, 500))).blob();
+    const img = await fileToImage(blob);
+    const t1 = performance.now();
+    const faces = await S.engine.detect(img);
+    const best = faces.sort((a, b) => b.box[2] * b.box[3] - a.box[2] * a.box[3])[0];
+    const vec = await S.engine.embed(img, best);
+    const tFace = performance.now() - t1;
+    let cos = 0;
+    for (let i = 0; i < vec.length; i++) cos += vec[i] * ref.vec[i];
+    const ok = cos >= 0.99;
+    out.push(`<p style="font-size:22px;font-weight:700;color:var(${ok ? '--good' : '--accent'})">${ok ? '✓ Same result as the build' : '✗ Different from the build'} (${cos.toFixed(4)})</p>`);
+    out.push(`<ul><li>Face matcher ready in ${(tLoad / 1000).toFixed(1)} s${S.engine && tLoad < 50 ? ' (already loaded)' : ''}</li>`);
+    out.push(`<li>One photo checked in ${(tFace / 1000).toFixed(2)} s</li>`);
+    out.push(`<li>${S.people.length.toLocaleString()} people, ${S.manifest.faces.toLocaleString()} faces</li>`);
+    out.push(`<li>Offline cache: ${navigator.serviceWorker?.controller ? 'on' : 'not yet (reopen the app once)'}</li>`);
+    out.push(`<li class="muted">${esc(navigator.userAgent)}</li></ul>`);
+    show(out.join(''));
+  } catch (e) {
+    show(`<p class="err">Check failed: ${esc(e.message)}</p>`);
+  }
+}
+
 async function pasteImage() {
   try {
     const items = await navigator.clipboard.read();
@@ -436,6 +475,7 @@ function route() {
   if (h.startsWith('#/p/')) return renderPerson(decodeURIComponent(h.slice(4)));
   if (h === '#/face') return renderFace();
   if (h === '#/about') return renderAbout();
+  if (h === '#/check') return renderCheck();
   return renderHome();
 }
 
