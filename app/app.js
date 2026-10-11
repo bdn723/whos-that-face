@@ -132,10 +132,12 @@ function wireFilters(rerender) {
 // ---------- data loading ----------
 
 const timings = {};
+async function loadManifest() {
+  S.manifest = await (await fetch('data/manifest.json', { cache: 'no-cache' })).json();
+}
 async function loadPeople() {
   const t0 = performance.now();
-  const m = await (await fetch('data/manifest.json', { cache: 'no-cache' })).json();
-  S.manifest = m;
+  const m = S.manifest;
   const d = await (await fetch(m.people)).json();
   timings.peopleLoad = performance.now() - t0;
   S.people = d.people;
@@ -227,7 +229,7 @@ async function handlePhoto(blob) {
     let img = await fileToImage(blob);
     S.photo.status = S.engine ? 'Looking for faces…' : 'Getting the face matcher ready (first time only)…';
     renderFace();
-    await loadFaces();
+    await Promise.all([loadFaces(), peopleReady]);
     let faces = await S.engine.detect(img);
     // Sideways photo? Try the other orientations.
     for (let turn = 0; !faces.length && turn < 3; turn++) {
@@ -288,6 +290,11 @@ function renderNameResults() {
   if (!box) return;
   const q = S.query.trim();
   if (!q) { box.innerHTML = ''; return; }
+  if (!S.names) {
+    box.innerHTML = '<p class="loading">Getting the list of names ready…</p>';
+    peopleReady.then(renderNameResults);
+    return;
+  }
   const { same, similar } = searchNames(S.names, q, { limit: 40 });
   const keep = (r) => passesCat(S.people[r.pi]) && passesFame(S.people[r.pi]);
   // Exact-name matches always show (she typed that name); filters apply to the rest.
@@ -489,8 +496,12 @@ async function pasteImage() {
 
 // ---------- routing ----------
 
-function route() {
+async function route() {
   const h = location.hash || '#/';
+  if (!S.names && h !== '#/' && h !== '#/face') {
+    $view.innerHTML = '<p class="loading">Loading…</p>';
+    await peopleReady;
+  }
   if (h.startsWith('#/p/')) return renderPerson(decodeURIComponent(h.slice(4)));
   if (h === '#/face') return renderFace();
   if (h === '#/about') return renderAbout();
@@ -515,13 +526,20 @@ window.addEventListener('drop', (e) => {
 });
 window.addEventListener('hashchange', route);
 
+// The home screen shows at once; the 100k-name list loads and is indexed in
+// the background (a few seconds on a phone), and views that need it wait.
+let peopleReady;
 (async () => {
   try {
-    await loadPeople();
+    await loadManifest();
   } catch (e) {
     $view.innerHTML = `<p class="empty err">Couldn't load the app's data. Check your connection and reload.</p>`;
     return;
   }
+  peopleReady = new Promise((resolve) => setTimeout(resolve, 50)).then(loadPeople);
+  peopleReady.catch(() => {
+    $view.innerHTML = `<p class="empty err">Couldn't load the list of people. Check your connection and reload.</p>`;
+  });
   route();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 })();
