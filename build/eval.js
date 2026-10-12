@@ -41,6 +41,8 @@ const pct = (x) => `${(100 * x).toFixed(1)}%`;
 const base = (f) => f.toLowerCase().replace(/\.(jpe?g|png|webp)$/, '').replace(/\s*\((cropped|crop)[^)]*\)\s*/g, '').replace(/[\s_-]*(cropped|crop)\d*$/, '').trim();
 
 const groupOf = (p) => (p.cats & CAT.nebraska ? 'Nebraska' : p.cats & CAT.college ? 'College' : p.cats & CAT.pro ? 'Pro sports' : p.cats & CAT.music ? 'Music' : p.cats & CAT.screen ? 'Movies & TV' : 'Other');
+// Accuracy depends strongly on fame (photo quality and how many photos exist).
+const fameTier = (v) => (v >= 30000 ? 'Fame 30k+' : v >= 6000 ? 'Fame 6k-30k' : v >= 1500 ? 'Fame 1.5k-6k' : 'Fame <1.5k');
 const tally = new Map();
 const add = (g, top1, top10) => {
   const t = tally.get(g) || { n: 0, top1: 0, top10: 0 };
@@ -58,6 +60,7 @@ for (let r = 0; r < n; r++) {
   const p = byId.get(ids[r]);
   add('All', rank === 1, rank <= 10);
   add(groupOf(p), rank === 1, rank <= 10);
+  add(fameTier(p.views60), rank === 1, rank <= 10);
   if (rank > 10) misses.push({ name: p.name, rank, sameCos: Number(cosine(f.vec, f.evalVec).toFixed(3)), file: f.file, file2: f.evalFile });
 }
 

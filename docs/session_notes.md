@@ -123,3 +123,39 @@ Append a new dated section at the end of each session. Never rewrite earlier sec
 - Watch the chained runs to completion; then check the accuracy report on the full index.
 - iPhone #/check screenshot (parity, load and search timings on the real phone).
 - Later ideas from the plan are unchanged: "save this face" on the phone, Nebraska roster names, self-hosted thumbnails.
+
+## 12 Oct 2026: full build finished
+
+### Result
+- 7 chained GitHub runs, all successful (11 Oct 08:37 → 12 Oct ~18:00 UTC).
+- **116,307 people; 73,969 with face matching**, nothing pending.
+- Photo throughput on GitHub: ~41/min (slower than ~65/min from the Mac), with a few dozen 429s per run.
+- Main photo had several faces for 9,894 people; for 7,452 of them no second photo confirmed which face, so the largest was used.
+
+### Accuracy (n=801 fixed sample, second Commons photo; 95% CIs in eval.json)
+
+| Group | Ranked first | In top 10 |
+|---|---|---|
+| All | 61% | 73% |
+| Movies & TV | 81% | 89% |
+| Music | 52% | 65% |
+| College | 58% | 66% |
+| Pro sports | 45% | 60% |
+| Fame 30k+ views / 60 days | 73% | 83% |
+| Fame 6k–30k | 63% | 76% |
+| Fame 1.5k–6k | 59% | 68% |
+| Fame under 1.5k | 42% | 56% |
+
+- With 11.8k faces (after run 1) the overall figure was 82% / 88%. More look-alikes, and a sample weighted toward lesser-known people, explain the drop.
+- About 5% of test pairs have a second photo that barely matches the first (cosine < 0.2), so these figures understate a little.
+- Tried and **not adopted** (no measurable gain):
+  - dropping the 7,452 unconfirmed group-photo faces (accuracy unchanged, and those people would lose face matching);
+  - a fame nudge in ranking (+4 points for the famous, −4 for the obscure).
+- The limiting factor is the SFace model. A stronger model is the main lever: InsightFace weights are "non-commercial research only", which needs Ben's decision; larger models also mean bigger phone downloads.
+- eval.js now also reports by fame tier.
+
+### Live site after the build (desktop #/check)
+- Fingerprints match the build (cosine 1.0000).
+- 0.12 s per photo; 10 ms per name search.
+- Offline cache on.
+- The home screen now draws before the 115k-name list finishes loading.
